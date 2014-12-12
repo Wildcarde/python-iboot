@@ -15,4 +15,8 @@ setup(
         "Topic :: Utilities",
         "License :: OSI Approved :: BSD License",
     ],
+    entry_points = """
+      [console_scripts]
+      ibootpy = iboot:run
+    """,
 )

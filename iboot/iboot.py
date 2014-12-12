@@ -4,8 +4,19 @@ import logging
 import socket
 import struct
 
+
+
 HELLO_STR = 'hello-000'
 
+"""struct format:
+little-endian
+unsigned char
+21 char array
+21 char array
+unsigned char
+unsigned char
+unsigned short 
+"""
 HEADER_STRUCT = struct.Struct('<B21s21sBBH')
 
 COMMAND_MAP = {
@@ -157,10 +168,20 @@ class GetRelaysRequest(IOCommand):
         response = self.interface.socket.recv(self.interface.num_relays)
         if not response:
             return None
-
+        response = struct.unpack("<c",response)
         self.interface.increment_seq_num()
-        return [True if ord(relay_status) == 1 else False
+        """
+        replace with built up responce dictionary instead of unreliable oneliner
+        return [True if int.from_bytes(relay_status, byteorder='little') == 1 
+                else False
                 for relay_status in response]
+        """
+        """pre declare dictionary"""
+        relay_dict = {} 
+        for i in range(len(response)):
+          relay_dict[str(i)] = (True if int.from_bytes(response[i], byteorder='little')==1
+                                else False)
+        return relay_dict
 
 
 class PulseRelayRequest(RelayCommand):
@@ -210,7 +231,7 @@ class iBootInterface(object):
             return False
 
         try:
-            self.socket.sendall(HELLO_STR)
+            self.socket.sendall(str.encode(HELLO_STR))
             return self._get_initial_seq_num()
         except socket.error:
             self.logger.error('Socket error')
@@ -289,7 +310,73 @@ class iBootInterface(object):
             return False
         finally:
             self.disconnect()
+            
+""" Additions by Garrett McGrath"""
+def buildparser():
+  parser=argparse.ArgumentParser(description="ibootpy - iBoot DxP Tool")
+  parser.add_argument("ip", metavar='IP', help="IP you wish to interact with")
+  parser.add_argument("user", metavar='USER', help="User Name (default: admin)",
+		      default="admin", action="store")
+  parser.add_argument("password", metavar='PASSWORD',
+		      default="admin", action="store", help="Device Password")
+  parser.add_argument('action', metavar="ACTION", 
+		      choices=("on","off","toggle","status"), 
+		      default="status", help = 'Action to perform on list of iBoot Devices (default status)')
+  parser.add_argument("--port", help="Port to communicate with device",default=9100,type=int)
+  parser.add_argument("--relays", help="Number of relays to interact with",
+		      default=1,type=int)
+
+  #parser.add_argument("-v","--verbose", help ="verbose output", action="store_true")
+  return parser
+  
+            
+def run(args=None):
+  """Main entry if running as commandline program"""
+
+  parser = buildparser()
+  args = parser.parse_args()
+  """
+  steps required to interact with iboot:
+  make iboot interface object
+  retrieve dictionary of relays with object.get_relays 
+  perform action requested by arguements either printing (status)
+  or invoking actions (on/off/toggle) with object.switch_multiple
+     def __init__(self, ip, username, password, port=9100, num_relays=3)
+  """
+
+  dev = iBootInterface(args.ip,
+		       str.encode(args.user),
+		       str.encode(args.password),
+		     args.port, args.relays)
+  dev.seq_num = 0
+  
+  if args.action == "status":
+    relays=dev.get_relays()
+    print(relays)
+  elif args.action == "on":
+    relays=dev.get_relays()
+    for relay,setting in relays:
+      setting = True
+    dev.switch_multiple(relays)
+  elif args.action == "off":
+    relays=dev.get_relays()
+    for relay,setting in relays:
+      setting = False
+    dev.switch_multiple(relays)
+  elif args.action == "toggle":
+    relays=dev.get_relays()
+    for relay,setting in relays:
+      setting = not setting
+    dev.switch_multiple(relays)
+  else:
+    print("invalid arguement")
+  
+  
+  return 0
+  
+  
 
 if __name__ == '__main__':
-    interface = iBootInterface('192.168.0.105', 'admin', 'admin')
-
+  import sys
+  import argparse
+  sys.exit(run())
