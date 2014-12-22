@@ -83,6 +83,7 @@ class DXPCommand(object):
         return self._parse_bool(response)
 
     def _parse_bool(self, string):
+        self.logger.debug('dxpcommand.parsebool: string: ' + str(string))
         return not struct.unpack('?', string)[0]
 
     def do_request(self):
@@ -119,8 +120,8 @@ class IOCommand(DXPCommand):
 class RelayCommand(IOCommand):
     STATE_MAP = {
         True: 1,
-        False: 2,
-        'NO_CHANGE': 0
+        False: 0,
+        'NO_CHANGE': 2
     }
 
     def _get_response(self):
@@ -187,16 +188,10 @@ class GetRelaysRequest(IOCommand):
         response = struct.unpack("<c",response)
         self.logger.debug('getrelayrequest.getresponse: response-unpacked: ' + str(response))
         self.interface.increment_seq_num()
-        """
-        replace with built up responce dictionary instead of unreliable oneliner
-        return [True if int.from_bytes(relay_status, byteorder='little') == 1 
-                else False
-                for relay_status in response]
-        """
         """pre declare dictionary"""
         relay_dict = {} 
         for i in range(len(response)):
-          relay_dict[i] = (True if int.from_bytes(response[i], byteorder='little')==1 else False)
+          relay_dict[i+1] = (True if int.from_bytes(response[i], byteorder='little')==1 else False)
         self.logger.debug('getrelayrequest.getresponse: relay_dict: ' + str(relay_dict))
         return relay_dict
 
@@ -233,8 +228,8 @@ class iBootInterface(object):
         self.logger.setLevel(logging.DEBUG)
 
     def get_seq_num(self):
+        self.seq_num += 1 #this seems like the wrong way to do this. sequence numbers should only increment when generating a packet
         seq_num = self.seq_num
-        #self.seq_num += 1 #this seems like the wrong way to do this. sequence numbers should only increment when generating a packet
         self.logger.debug('ibootintr.getseqnum: seq_num: ' + str(seq_num))
         return seq_num
 
@@ -261,22 +256,14 @@ class iBootInterface(object):
 
     def _get_initial_seq_num(self):
         response = self.socket.recv(2)
-        """
-        this is supposed to be a 4 byte uint16 based on spec
-        G2 doesn't seem to follow this to the letter. sending 2 bytes
-        instead of 4. Added handling to manage both it acting right
-        and wrong.
-        """
+
         if not response:
             return False
         self.logger.debug('ibootintr.sequencenum_responce:' + str(response) + ' length: ' + str(len(response)))
         """ should seq_num be auto incremented? seems like it should be
         done when new packets are issued, not when old ones are captured"""
-        self.seq_num = struct.unpack('<H', response)[0] + 1
-        #if len(response) == 2:
-          #self.seq_num = struct.unpack('<H', response)[0] + 1
-        #elif len(respose) == 4: #uint16 is 2 bytes not 4.
-          #self.seq_num = struct.unpack('<I', response)[0] + 1
+        self.seq_num = struct.unpack('<H', response)[0]
+
         self.logger.debug('ibootintr.getinitialseq - initial sequence:' + str(self.seq_num))
         return True
 
@@ -413,7 +400,6 @@ def run(args=None):
       relays[relay] = True
     logger.info('on_sending: ' + str(relays))
     dev.switch_multiple(relays)
-    dev.switch(0,True)
     relays=dev.get_relays()
     logger.info('on_end: ' + str(relays))
   elif args.action == "off":
@@ -423,7 +409,6 @@ def run(args=None):
       relays[relay] = False
     logger.info('off_sending: ' + str(relays))
     dev.switch_multiple(relays)
-    dev.switch(0,False)
     relays=dev.get_relays()
     logger.info('off_end: ' + str(relays))
   elif args.action == "toggle":
