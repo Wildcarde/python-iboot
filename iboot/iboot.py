@@ -369,12 +369,14 @@ def buildparser():
 		      default="status", help = 'Action to perform on list of iBoot Devices (default status)')
   parser.add_argument("--port", help="Port to communicate with device",default=9100,type=int)
   parser.add_argument("--relays", help="Number of relays to interact with", default=1,type=int)
+  
 
   #Add controls for 
 
   parser.add_argument("-v","--verbose", help="verbose output (currently unimplemented)", action="store_true")
   parser.add_argument("-q","--quiet", help="silence output, simply return success or failure.", action="store_true")
   parser.add_argument("--debug", help="Enable Debug Output", action="store_true")
+  parser.add_argument("--legacy", help="This outputs an 'on/off' note compatible with the old perl package for rev 1 iboots. This status is based off the value of relay 1 as the gen 1 iboots were single relay devices.", action="store_true")
   
   return parser
   
@@ -415,11 +417,10 @@ def run(args=None):
   
   """effectively a case statement for requested actions
   extremely rudimentary at this point, no sanity checking included."""
-  
+  relays = {}
   if args.action == "status":
     relays=dev.get_relays()
     logger.info('status: ' + str(relays))
-    
   elif args.action == "on":
     relays=dev.get_relays()
     logger.info('on_start: ' + str(relays))
@@ -452,6 +453,13 @@ def run(args=None):
     
   else:
     logger.info("invalid state request")
+  
+  """ Print on/off for legacy output """
+  if args.legacy:
+    if relays[1]:
+      print ('ON')
+    else:
+      print ('OFF')
   
   
   return 0
